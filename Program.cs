@@ -5,11 +5,10 @@ namespace passgen
 {
     internal class Program
     {
-        private static Dictionary<string, string> sites = new Dictionary<string, string>();
-        private static Dictionary<string, string> passwords = new Dictionary<string, string>();
-
+        private static Database _dB;
         static void Main(string[] args)
         {
+            _dB = new Database();
             Console.WriteLine("Welcome to PassGen!");
             Console.WriteLine("1 - Add a site, user & password");
             Console.WriteLine("2 - Show all sites, users & passwords");
@@ -54,41 +53,131 @@ namespace passgen
 
         static void AddEntry()
         {
+            string? url, username, pass = "";
             // Capture entry info (website URL, username and password)
-            Console.WriteLine("Enter the website URL:");
-            string site = Console.ReadLine();
+            while (true)
+            {
+                Console.WriteLine("Enter the website URL:");
+                url = Console.ReadLine();
+                if (string.IsNullOrEmpty(url))
+                {
+                    Console.WriteLine("URL cannot be empty. Please try again.");
+                    continue;
+                }
+                break;
+            }
             Console.WriteLine("Enter the username:");
-            string user = Console.ReadLine();
+            while (true)
+            {
+                username = Console.ReadLine();
+                if (string.IsNullOrEmpty(username))
+                {
+                    Console.WriteLine("Username cannot be empty. Please try again.");
+                    continue;
+                }
+                break;
+            }
             Console.WriteLine("Enter the password:");
-            string pass = Console.ReadLine();
-            // Add the site and username to the sites dictionary, and the username and password to the passwords dictionary.
-            sites.Add(site, user);
-            passwords.Add(user, pass);
+            while (true)
+            {
+                pass = Console.ReadLine();
+                if (string.IsNullOrEmpty(pass))
+                {
+                    Console.WriteLine("Password cannot be empty. Please try again.");
+                    continue;
+                }
+                break;
+            }
+
+            // Create a new User and Site object based on the user input.
+            User user = new User(username, pass);
+            Site site = new Site(url, user);
+            // Add the new objects to the database.
+            _dB.Sites.Add(site);
+            _dB.Users.Add(user);
             Console.WriteLine("Entry added successfully!");
         }
 
         static void ShowEntries()
         {
             // Show every entry in the sites dictionary, along with the corresponding username and password from the passwords dictionary.
-            foreach (var site in sites)
+            foreach (var site in _dB.Sites)
             {
-                Console.WriteLine("Site: " + site.Key);
-                Console.WriteLine("Username: " + site.Value);
-                //Console.WriteLine("Password: " + passwords[site.Value]);
-                Console.WriteLine("Password: " + stringRSA(passwords[site.Value]));
+                if (site._URL != null)
+                {
+                    Console.WriteLine("URL: " + site._URL);
+                }
+                else
+                {
+                    Console.WriteLine("No URL found for this site.");
+                }
+                if (site.Users != null)
+                {
+                    foreach (var user in site.Users)
+                    {
+                        Console.WriteLine("Username: " + user.Username);
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("No users found for this site.");
+                }
+                if (site.Users != null)
+                {
+                    foreach (var user in site.Users)
+                    {
+                        Console.WriteLine("Password: " + user.Password);
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("No passwords found for this site.");
+                }
                 Console.WriteLine();
 
+            }
+            foreach (var user in _dB.Users)
+            {
+                if (user.Username != null)
+                {
+                    Console.WriteLine("Username: " + user.Username);
+                }
+                else
+                {
+                    Console.WriteLine("No username found for this user.");
+                }
+                if (user.Password != null)
+                {
+                    Console.WriteLine("Password: " + user.Password);
+                }
+                else
+                {
+                    Console.WriteLine("No password found for this user.");
+                }
+                Console.WriteLine();
             }
         }
 
         static void CheckMP()
         {
+            // Check if the master password isn't empty, and if it is, prompt the user to set it.
+            if (string.IsNullOrEmpty(_dB.MasterPassword))
+            {
+                Console.WriteLine("Master password not set. Please set it before adding an entry.");
+                SetMasterPassword();
+                return;
+            }
             // Prompt the user to enter the master password before allowing them to add an entry.
             Console.WriteLine("Enter your master password:");
-            string mp = Console.ReadLine();
+            string? mp = "";
+            mp = Console.ReadLine();
             // Hash the entered password using RSA4096, and compare it to the stored hashed password.
             string hashedMP = stringRSA(mp);
-            string storedHashedMP = "YOUR_STORED_HASHED_MP";
+            if (hashedMP != _dB.MasterPassword)
+            {
+                Console.WriteLine("Incorrect master password. Please try again.");
+                CheckMP();
+            }
 
         }
 
@@ -97,11 +186,25 @@ namespace passgen
             // Capture all keypresses into an array until 'Enter' is pressed.
             Console.WriteLine("Enter your master password:");
             string pass = "";
+            string hashedPass = "";
             while (true)
             {
-                ConsoleKeyInfo key = Console.ReadKey();
-                if (key.Key == ConsoleKey.Enter)
+                ConsoleKeyInfo key = Console.ReadKey(true);
+                
+                // Handle backspace keypresses
+                if (key.Key == ConsoleKey.Backspace)
                 {
+                    if (pass.Length > 0)
+                    {
+                        //Console.Write("\x1B[1D");
+                        //Console.Write("\x1B[1P");
+                        pass = pass.Remove(pass.Length  - 1);
+                        Console.Write("\b \b");
+                    }
+                }
+                else if (key.Key == ConsoleKey.Enter)
+                {
+                    Console.WriteLine();
                     // Check if the password is strong enough (at least 8 characters long, with at least one uppercase letter, one lowercase letter, one number and one special character).
                     if (pass.Length < 8 || !pass.Any(char.IsLower) || !pass.Any(char.IsUpper) || !pass.Any(char.IsDigit) || !pass.Any(char.IsPunctuation))
                     {
@@ -109,25 +212,29 @@ namespace passgen
                         pass = "";
                         continue;
                     }
-                    // Hash the password using RSA4096, and print to screen for user to copy manually.
-                    string hashedPass = stringRSA(pass);
-                    Console.WriteLine("Your hashed password is: " + hashedPass);
+                    // Hash the password using RSA-512, and print to screen for user to copy manually.
+                    hashedPass = stringRSA(pass);
+                    Console.WriteLine("Your hashed password is: \n\n" + hashedPass);
 
                     Console.WriteLine("Be sure to write it down or secure it safely for future use & recovery.");
                     Console.WriteLine("You will need it in order to decrypt entries.");
 
                     break;
                 }
+                else
+                {
+                    Console.Write("*");
+                }
                 pass += key.KeyChar;
             }
-
+            _dB.MasterPassword = hashedPass;
         }
 
-        // Encrypt a string to RSA-4096
+        // Encrypt a string to RSA-512
         private static string stringRSA(string input)
         {
             // Create a new instance of the RSACryptoServiceProvider class
-            using (RSACryptoServiceProvider rsa = new RSACryptoServiceProvider(4096))
+            using (RSACryptoServiceProvider rsa = new RSACryptoServiceProvider(512))
             {
                 // Convert the string to a byte array
                 byte[] data = Encoding.UTF8.GetBytes(input);
